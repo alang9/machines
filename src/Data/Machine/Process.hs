@@ -56,7 +56,7 @@ module Data.Machine.Process
   ) where
 
 import Control.Applicative
-import Control.Category (Category)
+import Control.Category
 import Control.Monad (liftM, when, replicateM_)
 import Control.Monad.Trans.Class
 import Data.Foldable hiding (fold)
@@ -67,7 +67,9 @@ import Data.Monoid
 import Data.Void
 import Prelude
 #if !(MIN_VERSION_base(4,8,0))
-  hiding (foldr)
+  hiding (id, (.), foldr)
+#else
+  hiding (id, (.))
 #endif
 
 infixr 9 <~
@@ -103,6 +105,7 @@ echo :: Process a a
 echo = repeatedly $ do
   i <- await
   yield i
+{-# INLINABLE echo #-}
 
 -- | A 'Process' that prepends the elements of a 'Foldable' onto its input, then repeats its input from there.
 prepended :: Foldable f => f a -> Process a a
@@ -113,23 +116,28 @@ filtered :: (a -> Bool) -> Process a a
 filtered p = repeatedly $ do
   i <- await
   when (p i) $ yield i
+{-# INLINABLE filtered #-}
 
 -- | A 'Process' that drops the first @n@, then repeats the rest.
 dropping :: Int -> Process a a
 dropping n = before echo $ replicateM_ n await
+{-# INLINABLE dropping #-}
 
 -- | A 'Process' that passes through the first @n@ elements from its input then stops
 taking :: Int -> Process a a
 taking n = construct . replicateM_ n $ await >>= yield
+{-# INLINABLE taking #-}
 
 -- | A 'Process' that passes through elements until a predicate ceases to hold, then stops
 takingWhile :: (a -> Bool) -> Process a a
 takingWhile p = repeatedly $ await >>= \v -> if p v then yield v else stop
+{-# INLINABLE takingWhile #-}
 
 -- | A 'Process' that drops elements while a predicate holds
 droppingWhile :: (a -> Bool) -> Process a a
 droppingWhile p = before echo loop where
   loop = await >>= \v -> if p v then loop else yield v
+{-# INLINABLE droppingWhile #-}
 
 -- | Chunk up the input into `n` element lists.
 --
@@ -141,7 +149,7 @@ buffered = repeatedly . go [] where
   go acc n = do
     i <- await <|> yield (reverse acc) *> stop
     go (i:acc) $! n-1
-
+{-# INLINABLE buffered #-}
 
 -- | Build a new 'Machine' by adding a 'Process' to the output of an old 'Machine'
 --
@@ -158,10 +166,12 @@ mp <~ ma = MachineT $ runMachineT mp >>= \v -> case v of
     Stop          -> runMachineT $ ff <~ stopped
     Yield o k     -> runMachineT $ f o <~ k
     Await g kg fg -> return $ Await (\a -> MachineT (return v) <~ g a) kg (MachineT (return v) <~ fg)
+{-# INLINABLE (<~) #-}
 
 -- | Flipped ('<~').
 (~>) :: Monad m => MachineT m k b -> ProcessT m b c -> MachineT m k c
 ma ~> mp = mp <~ ma
+{-# INLINABLE (~>) #-}
 
 -- | Feed a 'Process' some input.
 supply :: forall f m a b . (Foldable f, Monad m) => f a -> ProcessT m a b -> ProcessT m a b
@@ -177,6 +187,7 @@ supply xs = foldr go id xs
            Stop -> return Stop
            Await f Refl _ -> runMachineT $ r (f x)
            Yield o k -> return $ Yield o (go x r k)
+{-# INLINABLE supply #-}
 
 -- |
 -- Convert a machine into a process, with a little bit of help.
@@ -206,6 +217,7 @@ scan func seed = construct $ go seed where
     yield cur
     next <- await
     go $! func cur next
+{-# INLINABLE scan #-}
 
 -- |
 -- 'scan1' is a variant of 'scan' that has no starting value argument
@@ -232,12 +244,14 @@ scan1 func = construct $ await >>= go where
     yield cur
     next <- await
     go $! func cur next
+{-# INLINABLE scan1 #-}
 
 -- |
 -- Like 'scan' only uses supplied function to map and uses Monoid for
 -- associative operation
 scanMap :: (Category k, Monoid b) => (a -> b) -> Machine (k a) b
 scanMap f = scan (\b a -> mappend b (f a)) mempty
+{-# INLINABLE scanMap #-}
 
 -- |
 -- Construct a 'Process' from a left-folding operation.
@@ -252,6 +266,7 @@ fold func seed = construct $ go seed where
   go cur = do
     next <- await <|> yield cur *> stop
     go $! func cur next
+{-# INLINABLE fold #-}
 
 -- |
 -- 'fold1' is a variant of 'fold' that has no starting value argument
@@ -260,6 +275,8 @@ fold1 func = construct $ await >>= go where
   go cur = do
     next <- await <|> yield cur *> stop
     go $! func cur next
+{-# INLINABLE fold1 #-}
+
 
 -- | Break each input into pieces that are fed downstream
 -- individually.
@@ -283,8 +300,9 @@ sinkPart_ p = go
                   (go ff)
 
 -- | Apply a monadic function to each element of a 'ProcessT'.
-autoM :: Monad m => (a -> m b) -> ProcessT m a b
+autoM :: (Category k, Monad m) => (a -> m b) -> MachineT m (k a) b
 autoM f = repeatedly $ await >>= lift . f >>= yield
+{-# INLINABLE autoM #-}
 
 -- |
 -- Skip all but the final element of the input
@@ -297,6 +315,7 @@ final = construct $ await >>= go where
   go prev = do
     next <- await <|> yield prev *> stop
     go next
+{-# INLINABLE final #-}
 
 -- |
 -- Skip all but the final element of the input.
@@ -310,6 +329,7 @@ finalOr = construct . go where
   go prev = do
     next <- await <|> yield prev *> stop
     go next
+{-# INLINABLE finalOr #-}
 
 -- |
 -- Intersperse an element between the elements of the input
@@ -329,24 +349,25 @@ intersperse sep = construct $ await >>= go where
 -- Return the maximum value from the input
 largest :: (Category k, Ord a) => Machine (k a) a
 largest = fold1 max
+{-# INLINABLE largest #-}
 
 -- |
 -- Return the minimum value from the input
 smallest :: (Category k, Ord a) => Machine (k a) a
 smallest = fold1 min
+{-# INLINABLE smallest #-}
 
 -- |
 -- Convert a stream of actions to a stream of values
 sequencing :: (Category k, Monad m) => MachineT m (k (m a)) a
-sequencing = repeatedly $ do
-  ma <- await
-  a  <- lift ma
-  yield a
+sequencing = autoM id
+{-# INLINABLE sequencing #-}
 
 -- |
 -- Apply a function to all values coming from the input
 mapping :: Category k => (a -> b) -> Machine (k a) b
 mapping f = repeatedly $ await >>= yield . f
+{-# INLINABLE mapping #-}
 
 -- |
 -- Parse 'Read'able values, only emitting the value if the parse succceeds.
@@ -362,6 +383,7 @@ reading = repeatedly $ do
 -- Convert 'Show'able values to 'String's
 showing :: (Category k, Show a) => Machine (k a) String
 showing = mapping show
+{-# INLINABLE showing #-}
 
 -- |
 -- 'strippingPrefix' @mp mb@ Drops the given prefix from @mp@. It stops if @mb@

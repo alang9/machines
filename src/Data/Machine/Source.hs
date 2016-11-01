@@ -32,7 +32,7 @@ import Data.Foldable
 import Data.Machine.Plan
 import Data.Machine.Type
 import Data.Machine.Process
-import Prelude (Enum, Eq, Int, Maybe, Monad, otherwise, succ, (==), (>>), ($))
+import Prelude (Enum, Int, Maybe, Monad, ($))
 
 -------------------------------------------------------------------------------
 -- Source
@@ -80,11 +80,14 @@ replicated :: Int -> a -> Source a
 replicated n x = repeated x ~> taking n
 
 -- | Enumerate from a value to a final value, inclusive, via 'succ'
-enumerateFromTo :: (Enum a, Eq a) => a -> a -> Source a
-enumerateFromTo start end = construct (go start) where
-  go i
-    | i == end  = yield i
-    | otherwise = yield i >> go (succ i)
+--
+-- Examples:
+--
+-- >>> run $ enumerateFromTo 1 3
+-- [1,2,3]
+--
+enumerateFromTo :: Enum a => a -> a -> Source a
+enumerateFromTo start end = source [ start .. end ]
 
 -- | 'unfold' @k seed@ The function takes the element and returns Nothing if it
 --   is done producing values or returns Just (a,r), in which case, @a@ is
