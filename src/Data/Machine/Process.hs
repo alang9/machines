@@ -209,6 +209,23 @@ scan func seed = construct $ go seed where
 
 -- |
 -- 'scan1' is a variant of 'scan' that has no starting value argument
+--
+-- This can be constructed from a plan with
+-- @
+-- scan1 :: Category k => (a -> a -> a) -> Machine (k a) a
+-- scan1 func = construct $ await >>= go where
+--   go cur = do
+--     yield cur
+--     next <- await
+--     go $! func cur next
+-- @
+--
+-- Examples:
+--
+-- >>> import Data.Machine.Source
+-- >>> run $ scan1 (+) <~ source [1..5]
+-- [1,3,6,10,15]
+--
 scan1 :: Category k => (a -> a -> a) -> Machine (k a) a
 scan1 func = construct $ await >>= go where
   go cur = do
