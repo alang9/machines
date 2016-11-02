@@ -214,6 +214,7 @@ construct m = MachineT $ runPlanT m
   (\o k -> return (Yield o (MachineT k)))
   (\f k g -> return (Await (MachineT #. f) k (MachineT g)))
   (return Stop)
+{-# INLINE construct #-}
 
 -- | Generates a model that runs a machine until it stops, then start it up again.
 --
@@ -225,6 +226,7 @@ repeatedly m = r where
     (\o k -> return (Yield o (MachineT k)))
     (\f k g -> return (Await (MachineT #. f) k (MachineT g)))
     (return Stop)
+{-# INLINE repeatedly #-}
 
 -- | Unfold a stateful PlanT into a MachineT.
 unfoldPlan :: Monad m => s -> (s -> PlanT k o m s) -> MachineT m k o
@@ -234,6 +236,7 @@ unfoldPlan s0 sp = r s0 where
       (\o k -> return (Yield o (MachineT k)))
       (\f k g -> return (Await (MachineT #. f) k (MachineT g)))
       (return Stop)
+{-# INLINE unfoldPlan #-}
 
 -- | Evaluate a machine until it stops, and then yield answers according to the supplied model.
 before :: Monad m => MachineT m k o -> PlanT k o m a -> MachineT m k o
@@ -242,6 +245,7 @@ before (MachineT n) m = MachineT $ runPlanT m
   (\o k -> return (Yield o (MachineT k)))
   (\f k g -> return (Await (MachineT #. f) k (MachineT g)))
   (return Stop)
+{-# INLINE before #-}
 
 -- | Incorporate a 'Plan' into the resulting machine.
 preplan :: Monad m => PlanT k o m (MachineT m k o) -> MachineT m k o
@@ -250,6 +254,7 @@ preplan m = MachineT $ runPlanT m
   (\o k -> return (Yield o (MachineT k)))
   (\f k g -> return (Await (MachineT #. f) k (MachineT g)))
   (return Stop)
+{-# INLINE preplan #-}
 
 -- | Given a handle, ignore all other inputs and just stream input from that handle.
 --
